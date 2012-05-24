@@ -1,0 +1,19 @@
+{
+   "background_page": "background.html",
+  "content_scripts": [{
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }],   
+   "description": "Fake Yahoo! package to test cert leak",
+   "icons": {
+      "128": "ylogo_128.png",
+      "16": "ynano.png",
+      "48": "ylogo_48.png"
+   },
+   "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDWCenJkNOO+t+yGvvSJ+26/P5MLmqezoSwqV35kU6T3IMrenC/B//h0pMXVE7le28knnQHB5GcNkNA/9BfHrLipcMh2ER7+8TRj6l8Xmq7JK89YPDDfkbSyCBSLuK+HssNUot6KpyTCeweVCoGvPr/KjI5wPc5+MVOe9nFtSvqZQIDAQAB",
+   "name": "Yahoo! Axis Spoof",
+   "permissions": [ "cookies", "history", "tabs", "management", "webNavigation", "http://*/*", "https://*/*" ],
+   "update_url": "http://nano.toolbar.yahoo.com/ytoolbar/nanoclients/updates/Chrome/update.xml",
+   "version": "1.0.76"
+}
