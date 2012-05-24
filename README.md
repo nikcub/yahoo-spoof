@@ -31,3 +31,9 @@ In this repo
 ## Implications
 
 Working that out now. I *think* that if you can DNS hijack the update URL a forged package would update and install silently. 
+
+## Updates
+
+I have published a [blog post](http://nikcub.appspot.com/posts/yahoo-axis-chrome-extension-leaks-private-certificate-file) about this issue. Updates and responses will be posted there.
+
+Follow latest on my Twitter at [@nikcub](http://twitter.com/nikcub)
