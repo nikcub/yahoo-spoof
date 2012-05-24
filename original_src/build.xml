@@ -1,0 +1,18 @@
+<?xml version="1.0" ?>
+<project name="ynanochrome" default="build">
+  <target name="clean">
+    <delete>
+      <fileset dir=".">
+        <include name="*.crx" />
+      </fileset>
+    </delete>
+  </target>
+  <target name="build">
+    <exec executable="chrome.exe" dir=".">
+      <arg value="--pack-extension=." />
+      <arg value="--pack-extension-key=./nano_client.pem" />
+      <arg value="--no-message-box" />
+    </exec>
+  </target>
+  <target name="all" depends="clean,build" />
+</project>

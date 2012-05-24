@@ -1,0 +1,22 @@
+<html>
+<head>
+<script type="text/javascript">
+var g_tabId= 0;
+var tabIdIdx= document.location.href.indexOf("tabId=");
+if (tabIdIdx != -1)
+   g_tabId= Number(document.location.href.substr(tabIdIdx + 6));
+
+chrome.extension.sendRequest(
+{
+	requestType: "getBandContentInject",
+	tabId: g_tabId
+}, function(request)
+{
+   window.setTimeout(function() { eval(request.injectScript); }, 100);
+});
+</script>
+</head>
+<body>
+&nbsp;
+</body>
+</html>

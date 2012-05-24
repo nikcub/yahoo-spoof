@@ -1,0 +1,2520 @@
+<html>
+
+<head>
+
+<script type="text/javascript" src="http://l.yimg.com/d/ult/ylc_1.9.js"></script>
+
+<script type="text/javascript">
+
+ChromeDebugManager=
+{
+   _mDebugMode: false,
+
+   logError: function(text)
+   {
+      if (this._mDebugMode)
+         alert(text);
+   }
+};
+
+ChromeTrackingManager=
+{
+   _mNanoVer: "",
+   _mNanoUUID: "",
+
+   init: function(fnRet)
+   {
+      try
+      {
+         var nThreadsRemain= 1;
+         
+         this._mNanoUUID= window.localStorage.getItem('perm_ynano_uuid');
+         if (!this._mNanoUUID)
+         {
+            var _self= this;
+
+            nThreadsRemain++;
+
+            chrome.cookies.get(
+            {
+               url: "http://www.yahoo.com/",
+               name: "nano_uuid"
+            }, function(cookie)
+            {
+               if (cookie && (typeof(cookie.value) != "undefined") && (cookie.value != ""))
+                  _self._mNanoUUID= cookie.value;
+               else
+                  _self._mNanoUUID= _self.generateUUID();
+
+               window.localStorage.setItem('perm_ynano_uuid', _self._mNanoUUID);
+               _self.setUUIDCookie();
+
+               if (fnRet && (--nThreadsRemain == 0))
+                  fnRet();        
+            });
+         }
+         else
+            this.setUUIDCookie();
+
+         installTime= window.localStorage.getItem('ynano_installTime');
+         if (!installTime)
+            window.localStorage.setItem('ynano_installTime', (new Date()).getTime());
+         
+         var _self= this;
+         chrome.management.getAll(function(extInfo)
+         {
+            _self._mNanoVer= "unknown";
+            var extCount= extInfo.length;
+            for (var extOn= 0; extOn < extInfo.length; extOn++)
+            {
+               var extCur= extInfo[extOn];
+               if (extCur.name == "Yahoo! Axis")
+               {
+                  _self._mNanoVer= 'YNanoChrome ' + extCur.version;
+                  break;
+               }
+            }
+
+            if (fnRet && (--nThreadsRemain == 0))
+               fnRet();        
+         });
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeTrackingManager.init error: ' + e.message);
+      }
+   },
+   
+   getInstallDate: function(pluginId)
+   {
+      var installDate= null;
+      
+      try
+      {
+         installDate= window.localStorage.getItem('ynano_' + pluginId + '_installDate');
+         if (!installDate)
+         {
+            installDate= (new Date()).toString();
+            window.localStorage.setItem('ynano_' + pluginId + '_installDate', installDate);
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeTrackingManager.getInstallDate error: ' + e.message);
+      }
+
+      return installDate;
+   },
+   
+   isBeaconSent: function(pluginId, beaconType)
+   {
+      try
+      {
+         var sentBeaconsJSON= window.localStorage.getItem('ynano_' + pluginId + '_trackingState');
+         if (sentBeaconsJSON)
+         {
+            var sentBeacons= JSON.parse(sentBeaconsJSON);
+            return sentBeacons[beaconType];
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeTrackingManager.isBeaconSent error: ' + e.message);
+      }
+
+      return false;
+   },
+
+   setBeaconSent: function(pluginId, beaconType)
+   {
+      try
+      {
+         var sentBeacons= {};
+         
+         var sentBeaconJSON= window.localStorage.getItem('ynano_' + pluginId + '_trackingState');
+         if (sentBeaconJSON)
+            sentBeaconJSON= JSON.parse(sentBeaconJSON);
+
+         sentBeacons[beaconType]= true;
+         window.localStorage.setItem('ynano_' + pluginId + '_trackingState', JSON.stringify(sentBeacons));
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeTrackingManager.setBeaconSent error: ' + e.message);
+      }
+   },
+   
+   setTrackingDataJSON: function(pluginId, aryJSON)
+   {
+      window.localStorage.setItem('ynano_' + pluginId + '_trackingData', aryJSON);   
+      this.sendBeacon(pluginId, 'install');
+   },
+
+   getBeaconURL: function(pluginId, beaconType)
+   {
+      var beaconURLRet= "";
+      
+      try
+      {
+         var trackingDataJSON= window.localStorage.getItem('ynano_' + pluginId + '_trackingData');
+         if (trackingDataJSON)
+         {
+            var trackingData= JSON.parse(trackingDataJSON);
+            var trackTypeCount= trackingData.length;
+            for (var trackTypeOn= 0; trackTypeOn < trackTypeCount; trackTypeOn++)
+            {
+               var trackTypeCur= trackingData[trackTypeOn];
+               if (trackTypeCur.trackEvt.toLowerCase() == beaconType.toLowerCase())
+               {
+                  var trackParams= {};
+                  trackParams[YAHOO.ULT.SRC_SPACEID_KEY]= trackTypeCur.trackSpaceID;
+
+                  for (var paramOn in trackTypeCur.trackParams)
+                  {
+                     var paramVal= trackTypeCur.trackParams[paramOn];
+         	      	 
+                     if (paramVal == '{installDate}')
+                        paramVal= this.getInstallDate(pluginId);
+                     else if (paramVal == '{nanoVer}')
+                        paramVal= this._mNanoVer;
+                     else if (paramVal == '{nanoUUID}')
+                        paramVal= this._mNanoUUID;
+                     else if (paramVal == '{userSignedIn}')
+                        paramVal= ((ChromeCookieManager._mYahooBlindYID != '') ? '1' : '0');
+
+                     trackParams[paramOn]= paramVal; 	         
+                  }
+         	         
+                  beaconURLRet= (YAHOO.ULT.track_click(YAHOO.ULT.BEACON, trackParams) + '?t=' + Math.random());
+                  break;
+               }
+            }
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeTrackingManager.getBeaconURL error: ' + e.message);
+      }
+
+      return beaconURLRet;
+   },
+
+   sendBeacon: function(pluginId, beaconType, bForce)
+   {
+      try
+      {
+         if (bForce || !this.isBeaconSent(pluginId, beaconType))
+         {
+            var beaconURL= this.getBeaconURL(pluginId, beaconType);
+            if (beaconURL)
+            {
+               YAHOO.ULT.IMG.src= beaconURL;
+               this.setBeaconSent(pluginId, beaconType);      	
+            }
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeTrackingManager.sendBeacon error: ' + e.message);
+      }
+   },
+
+   sendBeaconForAllPlugins: function(beaconType, bForce)
+   {
+      try
+      {
+         var plugins= ChromeScriptInjector.getPlugins();
+         for (var index in plugins)
+         {
+            var pluginId= plugins[index].pluginID;
+            if (ChromePluginManager.isPluginInstalled(pluginId))
+               this.sendBeacon(pluginId, beaconType, bForce);
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeTrackingManager.sendBeaconForAllPlugins error: ' + e.message);
+      }   
+   },
+
+   generateUUID: function()
+   {
+      var strUUID= "";
+
+      try
+      {
+         var timeSeed= ((new Date()).getTime()).toString();
+         timeSeed= timeSeed.substr(timeSeed.length - 3);
+         for (var seedOn= 0; seedOn < timeSeed; seedOn++)
+            Math.random();
+
+         for (var charOn= 0; charOn < 32; charOn++)
+         {
+            var charCur= Math.floor(Math.random() * 36);
+            if (charCur > 25)
+               charCur= String.fromCharCode(48 + charCur - 26);
+            else
+               charCur= String.fromCharCode(65 + charCur);
+
+            strUUID += charCur;
+
+            switch (charOn)
+            {
+               case 7:
+               case 11:
+               case 15:
+               case 19:
+                  strUUID += '-';
+                  break;
+            };
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeTrackingManager.generateUUID error: ' + e.message);
+      }
+
+      return strUUID;
+   },
+
+   setUUIDCookie: function()
+   {
+      try
+      {
+         var timeExpire= (((new Date()).getTime() / 1000) + (86400 * 365)); // 1-year lifespan
+         chrome.cookies.set(
+         {
+            url: "http://www.yahoo.com/",
+            name: "nano_uuid",
+            value: this._mNanoUUID,
+            expirationDate: timeExpire
+         });
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeTrackingManager.setUUIDCookie error: ' + e.message);
+      }
+   }
+};
+
+ChromeCookieManager=
+{
+   _mYahooBlindYID: "",
+   _mCookieRegData: {},
+
+   registerPluginCookies: function(pluginId, cookieJson)
+   {
+      try
+      {
+         for(var index = 0, lindex = cookieJson.length; index < lindex; index++)
+         {
+            var cookieNames = cookieJson[index].cookies;
+            var domain= cookieJson[index].domain;
+
+            for(var nameIndex = 0, lnameIndex = cookieNames.length; nameIndex < lnameIndex; nameIndex++)
+            {
+               var cookieName = cookieNames[nameIndex];
+               if(!this._mCookieRegData[cookieName])
+                  this._mCookieRegData[cookieName] = {};
+
+               var domainArray = this._mCookieRegData[cookieName];
+               if(!domainArray[domain])
+                  domainArray[domain] = {};
+
+               this._mCookieRegData[cookieName][domain][pluginId] = pluginId;
+            }
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('CookieChromeManager::registerPluginCookies error: ' + e.message);
+      }
+   },
+
+   getPluginIDsForCookie: function(cookieName, domain)
+   {
+      if(this._mCookieRegData[cookieName] && this._mCookieRegData[cookieName][domain])
+      {
+         return this._mCookieRegData[cookieName][domain];
+      }
+   },
+
+   getBlindYIDFromYCookie: function(cookieVal)
+   {
+      try
+      {
+         this._mYahooBlindYID= "";
+         if (cookieVal && (cookieVal.search(/^l=[^&]/) > -1 || 
+                           cookieVal.search(/&l=[^&]/) > -1 || 
+                           cookieVal.indexOf("np=1") > -1))
+         {
+            var nStart= -1, nLength = -1;
+            if ((nStart= cookieVal.search("&l=")) > -1)
+            {                    
+               nStart += 3;
+               if ((nLength = cookieVal.substr(nStart).search("&")) > -1)
+               {                                
+                  cookieVal= cookieVal.substr(nStart, nLength);                                
+                  cookieVal= cookieVal.replace(/\./g, "^"); 
+                  var reBlind = new RegExp('[:\\/?*"|<>]','g');
+                  this._mYahooBlindYID= cookieVal.replace(reBlind, "_");
+               }                    
+            }
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeCookieManager::getBlindYIDFromYCookie error: ' + e.message);
+      }
+   }
+};
+
+ChromePluginManager=
+{
+   _mEventRegData: {},
+   _mPrevActiveTabID: [],
+
+   registerEventsForPlugin: function(pluginId, eventList)
+   {
+      for (var index = 0, lindex = eventList.length; index < lindex; index++)
+      {
+         var eventName= eventList[index];
+         if (!this._mEventRegData[pluginId])
+            this._mEventRegData[pluginId] = {};
+
+         this._mEventRegData[pluginId][eventName] = true;
+      }
+   },
+
+   unregisterEventsForPlugin: function(pluginId)
+   {
+      if (this._mEventRegData[pluginId])
+         delete this._mEventRegData[pluginId];
+   },
+
+   isEventSupportedForPlugin: function(pluginId, eventName)
+   {
+      return (this._mEventRegData[pluginId] && this._mEventRegData[pluginId][eventName]);
+   },
+
+   getPluginList: function()
+   {
+      return this._mEventRegData;
+   },
+
+   installPlugin: function(pluginID)
+   {
+      window.localStorage.setItem("ynano_" + pluginID + "_installed", "true");
+   },
+
+   uninstallPlugin: function(pluginID)
+   {
+      window.localStorage.setItem("ynano_" + pluginID + "_installed", "false");
+   },
+
+   isPluginInstalled: function(pluginID)
+   {
+      return (window.localStorage.getItem("ynano_" + pluginID + "_installed") !== "false");
+   },
+
+   getInstalledPlugins: function(callObj)
+   {
+      var plugins = ChromeScriptInjector.getPlugins();
+      var installedPlugins = [];
+      for(var index in plugins)
+      {
+         var pluginId = plugins[index].pluginID;
+         if(this.isPluginInstalled(plugins[index].pluginID))
+         {
+            installedPlugins.push(pluginId);
+         }
+      }
+      return installedPlugins;
+   }
+
+};
+
+ChromeNavigationManager=
+{
+   navigateTab: function(tabId, createProperties, self)
+   {
+      if(!self)
+         chrome.tabs.create(createProperties);
+      else
+         chrome.tabs.update(tabId, createProperties);
+   },
+
+   navigateWindow: function(tabId, createProperties)
+   {
+      chrome.windows.create(createProperties);
+   },
+
+   navigate: function(tabId, callObj)
+   {
+      callObj.pvData = JSON.parse(callObj.pvData);
+      var createProperties = {url: callObj.pvData.navURL};
+      var _self = this;
+      if(callObj.pvData.navTarget == "self")
+      {
+        chrome.tabs.get(tabId, function(tab)
+        {
+           _self.navigateTab(tabId, createProperties, true);
+        });
+      }
+      else if(callObj.pvData.navTarget == "tab")
+      {
+        chrome.tabs.get(tabId, function(tab)
+        {
+           createProperties.index = tab.index+1;
+           _self.navigateTab(tabId, createProperties);
+        });
+      }
+      else
+      {
+         createProperties.type = 'normal';
+         _self.navigateWindow(tabId, createProperties);
+      }
+   }
+
+};
+
+Base64Encoder= 
+{
+   _mEncodeChars: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",
+
+   encodeData: function(dataIn)
+   {
+      var base64Out= "";
+
+      try
+      {
+         var dataCharOn= 0;
+    
+         while (dataCharOn < dataIn.length)
+         {
+            var padBytes= 0;
+
+            // get the next 3 bytes of data by taking the next 3 unicode chars which come in
+            // (minus the useless high-order bytes)
+            var aryData3Bytes= [];
+            for (var byteOn= 0; byteOn < 3; byteOn++)
+            {
+               if (dataCharOn >= dataIn.length)
+               {
+                  aryData3Bytes.push(0);
+                  padBytes++;
+               }
+               else
+                  aryData3Bytes.push(dataIn.charCodeAt(dataCharOn++) & 0xff);
+            }
+    
+            // get each coded index into our encode array, 6 bits at a time, from the raw data
+            var aryCodes= [];
+            aryCodes.push(aryData3Bytes[0] >> 2); 
+            aryCodes.push(((aryData3Bytes[0] & 0x3) << 4) | (aryData3Bytes[1] >> 4)); 
+            aryCodes.push(((aryData3Bytes[1] & 0x0f) << 2) | (aryData3Bytes[2] >> 6)); 
+            aryCodes.push(aryData3Bytes[2] & 0x3f); 
+
+            // change all padding to char 64 (=)
+            while (padBytes > 0)
+               aryCodes[3 - --padBytes]= 64;
+
+            for (var codeOn= 0; codeOn < 4; codeOn++)
+               base64Out += this._mEncodeChars.charAt(aryCodes[codeOn]);
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('Base64Encoder::encodeData error: ' + e.message);
+      }
+
+      return base64Out;
+   }
+};
+
+ChromeResourcePreloader=
+{
+   _mPreloadURL: "http://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20data.headers%20where%20url%3D%22{url}%22%20and%20ua%3D%22{ua}%22&env=store%3A%2F%2Fdatatables.org%2Falltableswithkeys",
+   _mPreloadUA: "Mozilla/5.0 (compatible; Yahoo! Nano; http://help.yahoo.com/help/us/ysearch/slurp)",
+   _mAryPageList: new Array(),
+   _mAryResourceList: new Array(),
+   _mAlreadyPreloaded: {},
+   _mBase64FetchesRemain: {},
+   _mActivePreloads: 0,
+   _mLastPreloadReset: 0,
+   _mMaxSimultaneousDownloads: 16,
+   //_mElementsFetched: 0,
+
+   preloadResources: function(isPage, aryList, timeStamp)
+   {
+      try
+      {
+         if (aryList && (aryList.length > 0))
+         {
+            this._mLastPreloadReset= timeStamp;
+            
+            for (var elemOn= 0, aryLength= aryList.length; elemOn < aryLength; elemOn++)
+            {
+               var elemUrl= aryList[elemOn];
+               if (!this._mAlreadyPreloaded[elemUrl])
+               {
+                  this._mAlreadyPreloaded[elemUrl]= true;
+
+                  var objPreload=
+                  {
+                     elemUrl: elemUrl,
+                     timeStamp: timeStamp
+                  };
+                  
+                  if (isPage)
+                     this._mAryPageList.push(objPreload);
+                  else
+                     this._mAryResourceList.push(objPreload);
+               }
+            }
+
+            var objPreloadCur;
+            while (objPreloadCur= isPage ? this._mAryPageList.pop() : this._mAryResourceList.pop())
+               this.loadResource(objPreloadCur, isPage, null /*base64ImageFetchUUID*/, null, null);
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeResourcePreloader::preloadResources error: ' + e.message);
+      }
+   },
+
+   cancelActivePreloads: function()
+   {
+      this._mLastPreloadReset= (new Date().getTime());
+   },
+
+   fetchImagesAsBase64: function(port, callObj)
+   {
+      try
+      {
+         var aryList= JSON.parse(callObj.pvData);
+         if (aryList)
+         {
+            var fetchUUID= ChromeTrackingManager.generateUUID();
+            this._mBase64FetchesRemain[fetchUUID]= aryList.length;
+            
+            for (var elemOn= 0, elemLast= aryList.length; elemOn < elemLast; elemOn++)
+            {
+               var objPreload=
+               {
+                  elemUrl: aryList[elemOn],
+                  timeStamp: 0
+               };
+               
+               this.loadResource(objPreload, false /*isPage*/, fetchUUID /*base64ImageFetchUUID*/, port, callObj.pluginID);
+            }
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeResourcePreloader::fetchImagesAsBase64 error: ' + e.message);
+      }
+   },
+
+   fixupResourceURL: function(rootUrl, rawResourceURL)
+   {
+      try
+      {
+         var resourceURL= rawResourceURL;
+         if (resourceURL && (resourceURL.length > 2))
+         {
+            resourceURL= resourceURL.substring(1, resourceURL.length - 1);
+            resourceURL= resourceURL.replace("&quot;", "");
+            if (resourceURL.indexOf("://") == -1)
+               resourceURL= rootUrl + ((resourceURL[0] == '/') ? resourceURL : ('/' + resourceURL));
+            return resourceURL;
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeResourcePreloader::fixupResourceURL error (' + rawResourceURL + '): ' + e.message);
+      }
+
+      return null;      
+   },
+
+   checkForDownloadableResources: function(objPreload, srcContent)
+   {
+      try
+      {
+         //alert('SCANNING: ' + objPreload.elemUrl);
+	  
+         var aryResources= [];
+         var srcUrl= objPreload.elemUrl;
+
+         var rootUrl= "";
+         var idx= srcUrl.indexOf("://");
+         if (idx != -1)
+         {
+            idx= srcUrl.indexOf("/", idx + 3);
+            rootUrl= (idx == -1) ? srcUrl : srcUrl.substring(0, idx);
+         }
+
+         // this is valid for HTML or CSS
+         var backgroundResourceUrls= srcContent.match(/background[^:]*:[ ]*url[ ]*['"\(]([^'"\)]*)['"\)]/ig);
+         if (backgroundResourceUrls)
+         {
+            for (var index= 0, lindex= backgroundResourceUrls.length; index < lindex; index++)
+            {
+               var backgroundResource= backgroundResourceUrls[index];
+               var backgroundUrl= backgroundResource.match(/['"(]([^'"\)]*)['"\)]/ig)[0];
+               if ((backgroundUrl= this.fixupResourceURL(rootUrl, backgroundUrl)) != null)
+                  aryResources.push(backgroundUrl);
+            }
+         }
+
+         // these are valid for HTML only
+         if ((srcUrl.lastIndexOf(".css") != (srcUrl.length - 4)) || (srcUrl.indexOf(".css?") != -1))
+         {
+            var styleResourceUrls= srcContent.match(/<link[^>]*href[ ]*=[ ]*['"]([^'"]*)['"]/ig);
+            if (styleResourceUrls)
+            {
+               for (var index= 0, lindex= styleResourceUrls.length; index < lindex; index++)
+               {
+                  var styleResource= styleResourceUrls[index];
+                  var styleUrl= styleResource.match(/href[ ]*=[ ]*['"]([^'"]*)['"]/ig)[0].match(/['"]([^'"]*)['"]/ig)[0];
+                  if (styleUrl && styleUrl.match(/\.(css|jpg|jpeg|png|gif|bmp|xml|ico)/gi))
+                  {
+                     if ((styleUrl= this.fixupResourceURL(rootUrl, styleUrl)) != null)
+                        aryResources.push(styleUrl);
+                  }
+               }
+            }
+
+            var imageResourceUrls= srcContent.match(/<img[^>]*src[ ]*=[ ]*['"]([^'"]*)['"]/ig);
+            if (imageResourceUrls)
+            {
+               for (var index= 0, lindex= imageResourceUrls.length; index < lindex; index++)
+               {
+                  var imageResource= imageResourceUrls[index];
+                  var imageUrl= imageResource.match(/src[ ]*=[ ]*['"]([^'"]*)['"]/ig)[0].match(/['"][^'"]*['"]/ig)[0];
+                  if ((imageUrl= this.fixupResourceURL(rootUrl, imageUrl)) != null)
+                     aryResources.push(imageUrl);
+               }
+            }
+
+            var scriptResourceUrls= srcContent.match(/<script[^>]*src[ ]*=[ ]*['"]([^'"]*)['"]/ig);
+            if (scriptResourceUrls)
+            {
+               for (var index= 0, lindex= scriptResourceUrls.length; index < lindex; index++)
+               {
+                  var scriptResource= scriptResourceUrls[index];
+                  var scriptUrl= scriptResource.match(/src[ ]*=[ ]*['"]([^'"]*)['"]/ig)[0].match(/['"]([^'"]*)['"]/ig)[0];
+                  if ((scriptUrl= this.fixupResourceURL(rootUrl, scriptUrl)) != null)
+                     aryResources.push(scriptUrl);
+               }
+            }
+         }
+         else
+         {
+            // this is valid for CSS only
+            var importUrls= srcContent.match(/@import[ ]+url[ ]*\(['"]*([^'"\)]*)\)/ig);
+            if (importUrls)
+            {
+               for (var index= 0, lindex= importUrls.length; index < lindex; index++)
+               {
+                  var importResource= importUrls[index];
+                  var importUrl= importResource.match(/\(['"]*([^'"\)]*)\)/ig)[0].match(/([^'"\)]*)/ig)[0];
+                  if ((importUrl= this.fixupResourceURL(rootUrl, importUrl)) != null)
+                     aryResources.push(importUrl);
+               }
+            }
+         }
+
+         //this._mElementsFetched += aryResources.length;
+         //alert('found ' + this._mElementsFetched + ' resources so far');
+         this.preloadResources(false /*isPage*/, aryResources, objPreload.timeStamp);
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeResourcePreloader::checkForDownloadableResources error: ' + e.message);
+      }
+   },
+
+   loadResource: function(objPreload, isPage, base64ImageFetchUUID, port, pluginID)
+   {
+      try
+      {
+         var _self= this, url= objPreload.elemUrl;
+
+         if ((objPreload.timeStamp > 0) && (objPreload.timeStamp < this._mLastPreloadReset))
+            return;
+
+         if (this._mActivePreloads >= this._mMaxSimultaneousDownloads)
+         {
+            window.setTimeout(function() { _self.loadResource(objPreload, isPage, base64ImageFetchUUID, port, pluginID); }, 100);
+            return;
+         }
+
+         if (isPage)
+         {
+            url= this._mPreloadURL.replace('{url}', encodeURIComponent(url))
+                                  .replace('{ua}', encodeURIComponent(this._mPreloadUA));
+         }
+         
+         var xhr= new XMLHttpRequest();
+         xhr.open("GET", url, true);
+
+         if (base64ImageFetchUUID)
+         {
+            xhr.overrideMimeType('text/plain; charset=x-user-defined');
+            xhr.base64ImageFetchUUID= base64ImageFetchUUID;
+         }
+
+         xhr.onreadystatechange = function() 
+         {
+            if (xhr.readyState == 4)
+            {
+               _self._mActivePreloads--;
+               
+               if (isPage || (objPreload.elemUrl.lastIndexOf(".css") == (objPreload.elemUrl.length - 4)) || (objPreload.elemUrl.indexOf(".css?") != -1))
+               {
+                  if (xhr.status == 200)
+                  {
+                     var responseText= xhr.responseText;
+
+                     if (isPage)
+                     {
+                        var contentBegin= responseText.indexOf('<content>');
+                        var contentEnd= responseText.lastIndexOf('</content>');
+                        if ((contentBegin != -1) && (contentEnd != -1))
+                        {
+                           var pageContent= responseText.substring(contentBegin + 9, contentEnd);
+                           pageContent= pageContent.replace(/&amp;/g, '&');
+                           pageContent= pageContent.replace(/&lt;/g, '<');
+                           pageContent= pageContent.replace(/&gt;/g, '>');
+                  
+                           _self.checkForDownloadableResources(objPreload, pageContent);
+                        }
+                     }
+                     else
+                        _self.checkForDownloadableResources(objPreload, responseText);
+                  }
+               }
+               else if (base64ImageFetchUUID && port && !port.isDisconnected && pluginID)
+               {
+                  var headerStr= "";
+                  var encodedData= "";
+                  
+                  if (xhr.status == 200)
+                  {
+                     encodedData= Base64Encoder.encodeData(xhr.responseText);
+
+                     var hdrBits= encodedData.substr(0, 3);
+                     if (hdrBits == "R0l")
+                        headerStr= "data:image/gif;base64,";
+                     else if (hdrBits == "iVB")
+                        headerStr= "data:image/png;base64,";
+                     else if (hdrBits == "/9j")
+                        headerStr= "data:image/jpeg;base64,";
+                     else
+                     {
+                        var nIdxExt= url.lastIndexOf('.');
+                        if (nIdxExt != -1)
+                           headerStr= "data:image" + ((nIdxExt == -1) ? "" : ("/" + url.substr(nIdxExt + 1))) + ";base64,";
+                        else
+                           xhr.status= 415; // set unsupported media type if we can't figure out what this is
+                     }
+                  }
+
+                  var evtObj=
+                  {
+                     eventFn: "onBase64ImageFetch",
+      	             eventPv:
+                     {
+                        imgURL: url,
+                        imgStatus: xhr.status,
+                        imgData: ((xhr.status == 200) ? (headerStr + encodedData) : "")
+                     },     	    
+                     pluginID: pluginID
+                  };
+
+                  ChromeCallHandler.fireEventToPort(port, evtObj);
+
+                  if (!--_self._mBase64FetchesRemain[xhr.base64ImageFetchUUID])
+                  {
+                     _self._mBase64FetchesRemain[xhr.base64ImageFetchUUID]= null;
+                     
+                     var evtObj=
+                     {
+                        eventFn: "onBase64ImageFetchesComplete",
+                        eventPv: null,
+                        pluginID: pluginID
+                     };
+                     
+                     ChromeCallHandler.fireEventToPort(port, evtObj);                  
+                  }
+               }
+            }
+         }
+
+         this._mActivePreloads++;
+         xhr.send();
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeResourcePreloader::loadResource error (' + url + '): ' + e.message);
+      }
+   }
+};
+
+ChromeImageCapture=
+{
+   showHidePlugins: function(tabId, bShow, fnContinue)
+   {
+      try
+      {
+         var showHideExec= bShow ? "YAHOO.NanoBridge.scrollBack();" : 
+                                   "YAHOO.NanoBridge.scrollToTop();";
+         showHideExec += ("YAHOO.NanoBridge.setPluginsVisible("  + (bShow ? "true" : "false") + ");"); 
+                                 
+         chrome.tabs.executeScript(tabId, {code: showHideExec}, fnContinue);    
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeImageCapture::showHidePlugins error: ' + e.message);
+      }
+   },
+   
+   captureTabImage: function(tabId, port, callObj)
+   {
+      try
+      {
+         var _self= this;
+
+         chrome.tabs.get(tabId, function(tab)
+         {
+            chrome.windows.get(tab.windowId, function(windowCur)
+            {              
+               //_self.showHidePlugins(tabId, false /*bShow*/, function()
+               //{
+                  chrome.tabs.captureVisibleTab(windowCur.id, {"format": "png"}, function(imageData)
+                  {
+                     //_self.showHidePlugins(tabId, true /*bShow*/, function()
+                     //{
+                        var imgArgs= JSON.parse(callObj.pvData);
+                        _self.convertToDesiredSizeAndReturn(tabId, port, callObj, imgArgs, imageData);                                       
+                     //});
+                  });
+               //});
+            });
+         });
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeImageCapture::captureTabImage error: ' + e.message);
+      }
+   },
+
+   convertToDesiredSizeAndReturn: function(tabId, port, callObj, imgArgs, imageData)
+   {
+      try
+      {
+         if (imgArgs.scaleWidth && imgArgs.scaleHeight)
+         {
+            var imageObj= new Image();
+            imageObj.onload= function()
+            {
+               var canvasSize= document.createElement('canvas');
+               var contextSize= canvasSize.getContext("2d");
+               var imgAspect= imageObj.width / imageObj.height;
+               var scaleAspect= imgArgs.scaleWidth / imgArgs.scaleHeight;
+               var nWidth, nHeight, xOfs= 0;
+
+               canvasSize.width= imgArgs.scaleWidth;
+               canvasSize.height= imgArgs.scaleHeight;
+
+               if (imgAspect < scaleAspect)
+               {
+                  nWidth= imageObj.width;
+                  nHeight= Math.round(imageObj.width / scaleAspect);
+               }
+               else
+               {
+                  nHeight= imageObj.height;
+                  nWidth= Math.round(imageObj.height * scaleAspect);
+ 
+                  xOfs= Math.round((imageObj.width / 2) - (nWidth / 2));
+               }
+
+               contextSize.drawImage(imageObj, xOfs, 0, nWidth, nHeight, 0, 0, imgArgs.scaleWidth, imgArgs.scaleHeight);
+
+               callObj.ret = {};
+               callObj.ret.imgData= canvasSize.toDataURL("image/png");
+               ChromeCallHandler.postMessageToPort(port, callObj);              
+            };
+         
+            imageObj.src= imageData;
+         }
+         else
+         {
+            callObj.ret = {};
+            callObj.ret.imgData= imageData;
+            ChromeCallHandler.postMessageToPort(port, callObj);              
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeImageCapture::convertToDesiredSizeAndReturn error: ' + e.message);
+      }   
+   }
+};
+
+ChromeHistoryManager=
+{
+   _mAryHistory: [],
+   _mMaxCachedResults: 1000,
+   _mDaysOfHistoryToConsider: 30,
+   _mStalePeriod: 60 * 60 * 5 * 1000, // 5 minutes
+   _mLastInit: 0,
+   
+   ensureInit: function(force, fnRet)
+   {
+      try
+      {
+         var timeCur= (new Date()).getTime();
+         var _self= this;
+
+         if (((timeCur - this._mLastInit) > this._mStalePeriod) || force)
+         {
+            this._mLastInit= timeCur;           
+
+            chrome.history.search(
+            {
+               text: "",
+               startTime: timeCur - (86400000 * this._mDaysOfHistoryToConsider),
+               maxResults: this._mMaxResultsCache
+            }, function(aryHistory)
+            {              
+               try
+               {
+                  if ((_self._mDaysOfHistoryToConsider < 360) && (aryHistory.length < _self._mMaxCachedResults))
+                  {
+                     _self._mDaysOfHistoryToConsider += 30;
+                     _self.ensureInit(true /*force*/, fnRet);
+                  }
+                  else
+                  {
+                     _self._mAryHistory= aryHistory;
+                  
+                     _self._mAryHistory.sort(function(left, right)
+                     {
+                        return left.lastVisitTime < right.lastVisitTime;
+                     });
+               
+                     if (fnRet)
+                        fnRet();
+                  }
+               }
+               catch (e)
+               {
+                  ChromeDebugManager.logError('chrome.history.search error: ' + e.message);
+               }
+            });
+         }
+         else if (fnRet)
+            fnRet();
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeHistoryManager::ensureInit error: ' + e.message);
+      }
+   },
+
+   queryHistory: function(port, callObj)
+   {
+      try
+      {
+         var criteriaObj= ((callObj.pvData.length > 0) ? JSON.parse(callObj.pvData) : {});
+         var reTitle= (criteriaObj.regexTitle ? new RegExp(criteriaObj.regexTitle, 'g') : null);
+         var reURL= (criteriaObj.regexURL ? new RegExp(criteriaObj.regexURL, 'g') : null);
+         var resultsLeft= (criteriaObj.maxResults ? criteriaObj.maxResults : -1);
+         var aryMatches= [];
+         var _self= this;
+
+         this.ensureInit(ChromeScriptInjector._mInUnitTests /*force*/, function()
+         {
+            for (var histOn= 0, histCount= _self._mAryHistory.length; histOn < histCount; histOn++)
+            {
+               var histObjOn= _self._mAryHistory[histOn];
+
+               if ((!reTitle && !reURL) ||
+                   (reTitle && histObjOn.title.match(reTitle)) ||
+                   (reURL && histObjOn.url.match(reURL)))
+               {
+                  if ((resultsLeft != -1) && (resultsLeft-- == 0))
+                     break;
+
+                  aryMatches.push(
+                  {
+                     title: histObjOn.title,
+                     url: histObjOn.url,
+                     visits: histObjOn.visitCount,
+                     ts: Math.floor(histObjOn.lastVisitTime / 1000)
+                  });
+               }
+            }
+
+            callObj.ret= aryMatches;
+            ChromeCallHandler.postMessageToPort(port, callObj);
+         });
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeHistoryManager::queryHistory error: ' + e.message);
+      }   
+   }
+};
+
+ChromePerfMonitor=
+{
+   _mAryPerfMetrics: {},
+   _mBootStart: null,
+   _mBootEnd: null,
+
+   getPerfMetricsForPlugin: function(tabId, pluginId)
+   {
+      if (this._mAryPerfMetrics[tabId][pluginId])
+      {
+         var metrics = {};
+         metrics['msecBoot']= this._mBootEnd - this._mBootStart;
+         metrics['msecPageLoad']= (this._mAryPerfMetrics[tabId]['pageEnd'] ? (this._mAryPerfMetrics[tabId]['pageEnd'] - this._mAryPerfMetrics[tabId]['pageStart']) : null);
+         metrics['msecInject']= this._mAryPerfMetrics[tabId][pluginId]['loadEnd'] - this._mAryPerfMetrics[tabId][pluginId]['loadStart'];
+         metrics['tsInjectStart']= this._mAryPerfMetrics[tabId][pluginId]['loadStart'];
+         return metrics;
+      }
+   },
+
+   setPerfMetricsForPlugin: function(tabId, pluginId, name, value, overwrite)
+   {
+      if( ! this._mAryPerfMetrics[tabId] )
+      {
+         this._mAryPerfMetrics[tabId] = {};
+      } 
+      if( ! this._mAryPerfMetrics[tabId][pluginId] )
+      {
+         this._mAryPerfMetrics[tabId][pluginId] = {};
+      }
+      if((this._mAryPerfMetrics[tabId][pluginId][name] && overwrite) || !this._mAryPerfMetrics[tabId][pluginId][name])
+      this._mAryPerfMetrics[tabId][pluginId][name] = value;
+   },
+
+   setBootStart: function(time)
+   {
+      this._mBootStart = time;
+   },
+
+   setBootEnd: function(time)
+   {
+      this._mBootEnd = time;
+   },
+
+   setPageLoadStart: function(tabId, time, overwrite)
+   {
+      if( ! this._mAryPerfMetrics[tabId] )
+      {
+         this._mAryPerfMetrics[tabId] = {};
+      } 
+      if((this._mAryPerfMetrics[tabId]['pageStart'] && overwrite) || !this._mAryPerfMetrics[tabId]['pageStart'])
+         this._mAryPerfMetrics[tabId]['pageStart'] = time;
+   },
+
+   setPageLoadEnd: function(tabId, time, overwrite)
+   {
+      if( ! this._mAryPerfMetrics[tabId] )
+      {
+         this._mAryPerfMetrics[tabId] = {};
+      } 
+      if((this._mAryPerfMetrics[tabId]['pageEnd'] && overwrite) || !this._mAryPerfMetrics[tabId]['pageEnd'])
+         this._mAryPerfMetrics[tabId]['pageEnd'] = time;
+   }
+
+};
+
+ChromeCallHandler=
+{
+   _mTabPorts: {},
+
+   postMessageToTab: function(tabId, callObj)
+   {
+      if (this._mTabPorts[tabId] && this._mTabPorts[tabId].port)
+         this.postMessageToPort(this._mTabPorts[tabId].port, callObj);
+   },
+
+   postMessageToPort: function(port, callObj)
+   {
+      if (port && !port.isDisconnected)
+         port.postMessage(callObj);
+   },
+
+   attachTab: function(tabId)
+   {
+      try
+      {
+         var objTab=
+         {
+            port: null,
+            sinked: false
+         };
+
+         this._mTabPorts[tabId]= objTab;
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeCallHandler::attachTab error: ' + e.message);
+      }
+   },
+
+   attachPort: function(tabId)
+   {
+      try
+      {
+         var _self= this;
+
+         if (!this._mTabPorts[tabId])
+            this.attachTab(tabId);
+
+         var portObj= this._mTabPorts[tabId].port= chrome.tabs.connect(tabId, { name:"NanoClient" } );
+
+         if (portObj)
+         {
+            portObj.isDisconnected= false; 
+
+            portObj.onMessage.addListener(function (msg)
+            {
+               _self.handleCall(tabId, portObj, msg);               
+            });
+
+            portObj.onDisconnect.addListener(function()
+            {
+               portObj.isDisconnected= true;
+            });
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeCallHandler::attachPort error: ' + e.message);
+      }
+   },
+
+   attachReversePort: function(port)
+   {
+      try
+      {
+         var pluginIdIdx= port.name.indexOf(":");
+         if (pluginIdIdx != -1)
+         {
+            var tabIdIdx= port.name.indexOf(":", pluginIdIdx + 1);
+            if (tabIdIdx != -1)
+            {
+               var pluginId= port.name.substring(pluginIdIdx + 1, tabIdIdx); 
+               var tabId= Number(port.name.substr(tabIdIdx + 1));
+
+               var objTab=
+               {
+                  port: port,
+                  sinked: false
+               };
+
+               this._mTabPorts[tabId]= objTab;
+
+               port.onMessage.addListener(function(msg)
+               {
+                  ChromeCallHandler.handleCall(tabId, port, msg);
+               });
+            }
+         }   
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeCallHandler::attachReversePort error: ' + e.message);
+      }
+   },
+
+   detachTab: function(tabId)
+   {
+      this._mTabPorts[tabId]= null;
+   },
+
+   handleCall: function(tabId, port, callObj)
+   {
+      try
+      {
+         if (callObj.callFn == "getVersion")
+         {
+            callObj.ret= { nanoVer: ChromeTrackingManager._mNanoVer };
+            this.postMessageToPort(port, callObj);
+         }     
+         else if (callObj.callFn == "verifyNanoInstalled")
+         {
+            callObj.ret= true;
+            this.postMessageToPort(port, callObj);
+         }
+         else if (callObj.srcIsPlugin)
+            ChromePluginCallHandler.handleCall(tabId, port, callObj);
+         else
+            ChromePageCallHandler.handleCall(tabId, port, callObj);
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeCallHandler::handleCall error: ' + e.message);
+      }
+   },
+
+   fireEventToTab: function(tabId, evtObj)
+   {
+      try
+      {
+         if (this._mTabPorts[tabId])
+         {
+            var objTab= this._mTabPorts[tabId];
+            if (objTab && objTab.port)
+               this.fireEventToPort(objTab.port, evtObj);
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeCallHandler::fireEventToTab error: ' + e.message);
+      }
+   },
+
+   fireEventToPort: function(port, evtObj)
+   {
+      try
+      {
+         if (evtObj.pluginID && ChromePluginManager.isEventSupportedForPlugin(evtObj.pluginID, evtObj.eventFn))
+         {
+            evtObj.isEvent= true;
+            delete evtObj.callFn;
+            this.postMessageToPort(port, evtObj); 
+         }  
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeCallHandler::fireEventToPort error: ' + e.message);
+      }
+   },
+
+   fireEventToAllTabs: function(evtObj, sourceTabId, ignoreSelf)
+   {
+      try
+      {
+         evtObj.isEvent= true;
+         delete evtObj.callFn;
+         for (tabId in this._mTabPorts)
+         {
+            if (sourceTabId && (sourceTabId == tabId) && ignoreSelf)
+               continue;
+
+            this.fireEventToTab(tabId, evtObj);
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeCallHandler::fireEventToAllTabs error: ' + e.message);
+      }
+   }
+};
+
+ChromePluginCallHandler=
+{
+   getPerfMetrics: function(tabId, port, callObj)
+   {
+      callObj.ret = ChromePerfMonitor.getPerfMetricsForPlugin(tabId, callObj.pluginID);
+      ChromeCallHandler.postMessageToPort(port, callObj);
+   },
+
+   preloadPages: function(tabId, port, callObj)
+   {
+      ChromeResourcePreloader.preloadResources(true /*isPage*/, JSON.parse(callObj.pvData), (new Date()).getTime());
+   },
+
+   sinkClientEvents: function(tabId, port, callObj)
+   {
+      ChromePerfMonitor.setPerfMetricsForPlugin(tabId, callObj.pluginID, 'loadEnd', (new Date()).getTime());
+      ChromePluginManager.registerEventsForPlugin(callObj.pluginID, JSON.parse(callObj.pvData));
+
+      chrome.tabs.get(tabId, function(tab)
+      {
+         var evtObj=
+         {
+            eventFn:"onNavigateComplete",
+            eventPv: { URL: tab.url },
+            pluginID: callObj.pluginID
+         };
+
+         ChromeCallHandler.fireEventToPort(port, evtObj);
+      });
+   },
+
+   unsinkClientEvents: function(tabId, port, callObj)
+   {
+      ChromePluginManager.unregisterEventsForPlugin(callObj.pluginID);
+   },
+
+   queryBrowserHistory: function(tabId, port, callObj)
+   {
+      ChromeHistoryManager.queryHistory(port, callObj);
+   },
+
+   fetchBrowserBookmarks: function(tabId, callObj)
+   {
+      var bookmarks = [];
+      var _self = this;
+      chrome.bookmarks.getTree(function(nodes)
+      {
+         _self._traverseBookmarksSubTree(nodes, bookmarks);
+         callObj.ret = JSON.parse('['+bookmarks.join(",")+']');
+         ChromeCallHandler.postMessageToTab(tabId, callObj);
+      });
+   },
+
+   _traverseBookmarksSubTree: function(nodes, arrayToUpdate)
+   {
+      for(var index = 0, length = nodes.length; index < length; index++)
+      {
+         var node = nodes[index];
+         if(node.children)
+         {
+            this._traverseBookmarksSubTree(node.children, arrayToUpdate);
+         }
+         else
+         {
+            arrayToUpdate.push('{"URL": "'+node.url.replace(/\\/g, '\\\\').replace(/"/g, '\\"')+'", "title": "'+node.title.replace(/"/g, '\\"')+'", "dateAdded": "'+node.dateAdded+'"}');
+         }
+      }
+   },
+
+   getTabImageData: function(tabId, port, callObj)
+   {
+      return ChromeImageCapture.captureTabImage(tabId, port, callObj);
+   },
+
+   fetchImagesAsBase64: function(tabId, port, callObj)
+   {
+      return ChromeResourcePreloader.fetchImagesAsBase64(port, callObj);
+   },
+
+   update: function(tabId, port, callObj)
+   {
+      var evtObj=
+      {
+         eventFn: "onUpdate",
+         eventPv: callObj.pvData,
+         pluginID: callObj.pluginID
+      };
+
+      ChromeCallHandler.fireEventToAllTabs(evtObj, tabId, true);
+   },
+
+   sendMessage: function(tabId, port, callObj)
+   {
+      var evtObj=
+      {
+         eventFn: "onMessage",
+         eventPv: JSON.parse(callObj.pvData),
+         pluginID: callObj.pluginID
+      };
+
+      ChromeCallHandler.fireEventToAllTabs(evtObj, tabId, true);
+   },
+
+   getBrowserState: function(tabId, port, callObj)
+   {
+      chrome.windows.getCurrent(function(cWindow)
+      {
+         var ua= navigator.userAgent;
+         var reChromeMatches= ua.match("Chrome/(([0-9](\.)*)*) ");
+         callObj.ret= {};
+         callObj.ret.type= "Chrome";
+         callObj.ret.browserVer= ((reChromeMatches && (reChromeMatches.length > 0)) ? reChromeMatches[1] : "unknown");
+         callObj.ret.nanoVer= ChromeTrackingManager._mNanoVer;
+         callObj.ret.inPrivate= cWindow.incognito;
+         callObj.ret.UUID= ChromeTrackingManager._mNanoUUID;
+         callObj.ret.uninstallBeaconURL= ChromeTrackingManager.getBeaconURL(callObj.pluginID, "uninstall");
+         ChromeCallHandler.postMessageToPort(port, callObj);
+      });
+   },
+
+   trackCookies: function(tabId, port, callObj)
+   {
+      var cookieJson = JSON.parse(callObj.pvData);
+      ChromeCookieManager.registerPluginCookies(callObj.pluginID, cookieJson);
+   },
+
+   navigateURL: function(tabId, port, callObj)
+   {
+      ChromeNavigationManager.navigate(tabId, callObj);
+   },
+
+   sendNavigateResponse: function(tabId, port, callObj)
+   {
+      /*var navURL= (callObj.pvData.indexOf('{') != -1 ? JSON.parse(callObj.pvData).URL : callObj.pvData);
+      ChromeNavigationManager.navigateCore(tabId, navURL, "self");*/
+   },
+
+   sendTrackingData: function(tabId, port, callObj)
+   {
+      ChromeTrackingManager.setTrackingDataJSON(callObj.pluginID, callObj.pvData);
+   },
+
+   performTrack: function(tabId, port, callObj)
+   {
+      ChromeTrackingManager.sendBeacon(callObj.pluginID, callObj.pvData, false /*bForce*/);
+   },
+
+   runScriptInPage: function(tabId, port, callObj)
+   {
+      ChromeCallHandler.postMessageToTab(tabId, callObj);
+   },
+
+   setNanoPrefs: function(tabId, port, callObj)
+   {
+      try
+      {
+         var objPrefs= JSON.parse(callObj.pvData);
+         for (var prefName in objPrefs)
+            localStorage['ynano_pref_' + prefName]= objPrefs[prefName];
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeCallHandler::setNanoPrefs error: ' + e.message);
+      }
+   },
+
+   getNanoPrefs: function(tabId, port, callObj)
+   {
+      try
+      {
+         var ret= {};
+
+         var aryPrefs= JSON.parse(callObj.pvData);
+         for (var prefOn= 0, prefCount= aryPrefs.length; prefOn < prefCount; prefOn++)
+         {
+            var prefName= aryPrefs[prefOn];
+            ret[prefName]= localStorage['ynano_pref_' + prefName];
+         }
+
+         callObj.ret= ret;
+         ChromeCallHandler.postMessageToPort(port, callObj);
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeCallHandler::setNanoPrefs error: ' + e.message);
+      }
+   },
+
+   priorUninstallDetected: function(tabId, port, callObj)
+   {
+      try
+      {
+         for (var storageCur in window.localStorage)
+         {
+            if (storageCur.indexOf('ynano_') == 0)
+               window.localStorage.removeItem(storageCur);
+         }
+
+         ChromeTrackingManager.init(function()
+         {
+            var plugins= ChromeScriptInjector.getPlugins();
+            for (var index in plugins)
+            {
+               var objPlugin= plugins[index];
+               if (ChromePluginManager.isPluginInstalled(objPlugin.pluginID))
+                  ChromeScriptInjector.checkForFirstRun(tabId, objPlugin);
+            }         
+         });
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeScriptInjector.detectPriorUninstall error: ' + e.message);
+      }
+   },
+
+   handleCall: function(tabId, port, callObj)
+   {
+      if (this[callObj.callFn])
+         this[callObj.callFn](tabId, port, callObj);
+   }
+};
+
+ChromePageCallHandler=
+{
+   installPlugin: function(tabId, port, callObj)
+   {
+      this.isTabAYahooSite(tabId, function(ret)     
+      {
+         if (ret)
+         {
+            var pluginID = callObj.pvData;
+            ChromePluginManager.installPlugin(pluginID);
+         }
+      });
+   },
+
+   uninstallPlugin: function(tabId, port, callObj)
+   {
+      this.isTabAYahooSite(tabId, function(ret)     
+      {
+         if (ret)
+         {
+            var pluginID = callObj.pvData;
+            ChromePluginManager.uninstallPlugin(pluginID);
+         }
+      });
+   },
+
+   getInstalledPlugins: function(tabId, port, callObj)
+   {
+      var installedPlugins = ChromePluginManager.getInstalledPlugins(callObj);
+      callObj.ret = installedPlugins;
+      ChromeCallHandler.postMessageToPort(port, callObj);
+   },
+
+   setNanoPrefs: function(tabId, port, callObj)
+   {
+   	  this.isTabAYahooSite(tabId, function(ret)
+   	  {
+   	     if (ret)
+   	        ChromePluginCallHandler.setNanoPrefs(tabId, port, callObj);
+   	  });
+   },
+
+   getNanoPrefs: function(tabId, port, callObj)
+   {
+   	  this.isTabAYahooSite(tabId, function(ret)
+   	  {
+   	     if (ret)
+   	        ChromePluginCallHandler.getNanoPrefs(tabId, port, callObj);
+   	  });
+   },
+
+   handleCall: function(tabId, port, callObj)
+   {
+      if (this[callObj.callFn])
+         this[callObj.callFn](tabId, port, callObj);
+   },
+
+   isTabAYahooSite: function(tabId, fnRet)
+   {
+      chrome.tabs.get(tabId, function(tab)
+      {
+         var reMatch= tab.url.match("://[/]*([^/]*).yahoo.com[$|/]*");
+         fnRet((reMatch && (reMatch.length > 0)) ? true : false);
+      });   
+   }
+};
+
+ChromePluginHistoryManager=
+{
+   getPluginFirstLoadTime: function(pluginId, pluginVer)
+   {
+      return window.localStorage.getItem('ynano_' + pluginId + '_' + pluginVer + '_firstLoadTime');
+   },
+
+   setPluginFirstLoadTime: function(pluginId, pluginVer, time)
+   {
+      window.localStorage.setItem('ynano_' + pluginId + '_' + pluginVer + '_firstLoadTime', time);
+   }
+}
+
+ChromeScriptInjector=
+{
+   _mNanoBridgeCodeURL: "",
+   _mNanoBridgeCode: null,
+   _mPageBridgeURL: "",
+   //_mFeedUrl: "http://fruitfood-dr.bagmane.corp.yahoo.com/ytoolbar/nanoclients/php/nanoFeed.php",
+   //_mFeedUrl: "http://icethinsquare-vm0.atlanta.corp.yahoo.com/ytoolbar/nanoclients/nanoFeedTest.php",
+   _mFeedUrl: "https://nano.data.toolbar.yahoo.com/nanoFeed",
+   _mFeedUrlTest: "http://icethinsquare-vm0.atlanta.corp.yahoo.com/ytoolbar/nanoclients/nanoFeedQATest.php",
+   _mFeedJSON: null,
+   _mAryPluginResourceCollection: {normal:{}, unittest:{}},
+   _mTabsToInsertScript: {},
+   _mInUnitTests: false,
+   _mPluginsAreReady: false,
+   _mDeferInjectAry: [],
+   _mForceUpdateInt: null,
+   _mNewTabUrl: null,
+   _mBandInjectScript: {},
+   _mRetriedNanoFeed: false,
+   _mRecordUninstallURL: null,
+   _mDetectUninstallURL: null,
+   _mInjectAtTop: false,
+   _mDevPluginJSON: null,
+
+   addContent: function(pluginId, injectContent, forUnitTests)
+   {
+      try
+      {
+         var bInlineContent= !injectContent.injectRemote && !injectContent.injectWithBridge;
+         if (bInlineContent)
+         {
+            var _self= this;
+
+            var aryPluginResourceCollection= this._mAryPluginResourceCollection[forUnitTests ? "unittest" : "normal"];	
+            if (pluginId)
+               aryPluginResourceCollection[pluginId].resourcesRemain++;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", injectContent.contentUrlSSL ? injectContent.contentUrlSSL : injectContent.contentUrl, true);
+            xhr.onreadystatechange = function() 
+            {
+               if ((xhr.readyState == 4) && (xhr.status == 200)) 
+               {
+                  var injectCode= xhr.responseText;
+                  injectCode= injectCode.replace(/\n/g, "");
+                  injectCode= injectCode.replace(/\r/g, "");
+
+                  if (pluginId && !injectContent.injectRemote)
+                     injectContent.injectCode = injectCode;
+                  else if (!pluginId)
+                     _self._mNanoBridgeCode = injectCode;
+                  else
+                     injectContent.injectCode= "";
+
+                  if (pluginId && --aryPluginResourceCollection[pluginId]['resourcesRemain'] == 0)
+                     aryPluginResourceCollection['pluginsNotReady']--;
+
+                  if (aryPluginResourceCollection['pluginsNotReady'] == 0 && _self._mNanoBridgeCode)
+                  { 
+                     ChromePerfMonitor.setBootEnd((new Date()).getTime());
+
+                     for (var injectTabOn= 0, injectTabCount= _self._mDeferInjectAry.length; injectTabOn < injectTabCount; injectTabOn++)
+                     {
+                        _self.injectPlugins(_self._mDeferInjectAry[injectTabOn].tabIdInject,
+                                            _self._mDeferInjectAry[injectTabOn].tabUrlInject,
+                                            _self._mDeferInjectAry[injectTabOn].securePage);
+                     }
+
+                     _self._mDeferInjectAry= [];
+                  }
+               }
+            }
+            xhr.send();
+         }
+
+         return bInlineContent;
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeScriptInjector.addScript error: ' + e.message);
+      }
+   },  
+
+   fetchFeed: function(forceDefaultFeedURL, forceNoHTTPS)
+   {
+      //alert('booted');
+      var _self= this;
+      ChromePerfMonitor.setBootStart((new Date()).getTime());
+      ChromeHistoryManager.ensureInit(false, null);
+      ChromeTrackingManager.init(function()
+      {
+         try
+         {  
+            ChromePluginManager.installPlugin('SearchX');   
+
+            /*if (localStorage['devJSONpath'] && (localStorage['devJSONpath'] != ""))
+            {
+               var xhrDevJSON= new XMLHttpRequest;
+               xhrDevJSON.open("GET", localStorage['devJSONpath'], true);
+               xhrDevJSON.onreadystatechange = function()
+               {
+                  if ((xhrDevJSON.readyState == 4) && (xhrDevJSON.status == 200))
+                  {
+                     _self._mDevPluginJSON= JSON.parse(xhrDevJSON.responseText);
+
+                     for (var index = 0, lindex = _self._mDevPluginJSON.plugins.length; index < lindex; index++)
+                        ChromePluginManager.installPlugin(_self._mDevPluginJSON.plugins[index].pluginID);   
+                  }
+               }
+               xhrDevJSON.send();
+            }*/
+
+            var feedUrl= _self._mFeedUrl;
+            if (localStorage['injectsrc'] && (localStorage['injectsrc'] != 'axis'))
+            {
+               feedUrl= _self._mFeedUrlTest;
+            }
+            else if (!forceDefaultFeedURL)
+            {
+               var storedFeedUrl= localStorage['ynano_pref_nanoFeedURL'];
+               if (typeof(storedFeedUrl) == "string")
+               {
+                  var reMatch= storedFeedUrl.match("://[/]*([^/]*).yahoo.com[$|/]*");
+                  if (reMatch && (reMatch.length > 0))
+                     feedUrl= storedFeedUrl;
+               }
+            }              
+                
+            feedUrl += ("?nanoVer=" + encodeURIComponent(ChromeTrackingManager._mNanoVer));
+            /*if (localStorage['qamode'])
+               feedUrl += ("&qamode=" + localStorage['qamode']);*/
+
+            if (forceNoHTTPS)
+               feedUrl= feedUrl.replace('https://', 'http://');
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", feedUrl, true);
+            xhr.onreadystatechange = function() 
+            {
+               if (xhr.readyState == 4)
+               {
+                  if (xhr.status == 200)
+                  {
+                     chrome.windows.getLastFocused(function(windowCur)
+                     {
+                        chrome.tabs.getSelected(windowCur.id, function(tab)
+                        {
+                           _self.handleTabUpdate("loading", tab);
+                           _self._mForceUpdateInt= window.setInterval(function()
+                           {
+                              _self.handleTabUpdate("complete", tab);
+                           }, 3000);
+
+                           _self._mFeedJSON = JSON.parse(xhr.responseText);
+
+                           if (_self._mFeedJSON.YNanoClientFeed)
+                           {
+                              _self.readFeedConfig();
+
+                              if (_self._mDevPluginJSON)
+                                 _self._mFeedJSON.YNanoClientFeed.plugins= _self._mDevPluginJSON.plugins;
+
+                              if (_self._mFeedJSON.YNanoClientFeed.unittest)
+                                 _self.addAllScript(_self.getPlugins(true), true);
+
+                              _self.addAllScript(_self.getPlugins(false), false);    
+                           }
+                       });
+                     });
+                  }
+                  else if ((xhr.status == 0) && (feedUrl.indexOf('https://') == 0))
+                  {
+                     _self.fetchFeed(_self._mRetriedNanoFeed /*forceDefaultFeedURL*/, true /*forceNoHTTPS*/);
+                  }
+                  else if (!_self._mRetriedNanoFeed)
+                  {
+                     _self._mRetriedNanoFeed= true;
+                     _self.fetchFeed(true /*forceDefaultFeedURL*/, false /*forceNoHTTPS*/);
+                  }
+               }
+            }
+            xhr.send();
+         }
+         catch (e)
+         {
+            ChromeDebugManager.logError('ChromeScriptInjector.fetchFeed error: ' + e.message);
+         }
+      });
+   },
+
+   readFeedConfig: function()
+   {
+      try
+      {     
+         var configObj= this._mFeedJSON.YNanoClientFeed.config;
+         if (configObj)
+         {
+            if (configObj.preloadURL)
+               ChromeResourcePreloader._mPreloadURL= configObj.preloadURL;
+            if (configObj.preloadUA)
+               ChromeResourcePreloader._mPreloadUA= configObj.preloadUA;
+            if (configObj.nanoBridgeJS)
+               this._mNanoBridgeCodeURL= configObj.nanoBridgeJS;
+            if (configObj.pageBridgeJS)
+               this._mPageBridgeURL= configObj.pageBridgeJS;
+            if (configObj.debugMode)
+               ChromeDebugManager._mDebugMode= configObj.debugMode;
+            if (configObj.nanoFeedURL)
+               window.localStorage.setItem('ynano_pref_nanoFeedURL', configObj.nanoFeedURL);
+            if (configObj.recordUninstallURL)
+               this._mRecordUninstallURL= configObj.recordUninstallURL;
+            if (configObj.detectUninstallURL)
+               this._mDetectUninstallURL= configObj.detectUninstallURL;
+            if (configObj.injectAtTop)
+               this._mInjectAtTop= configObj.injectAtTop;
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeScriptInjector.readFeedConfig error: ' + e.message);
+      }
+   },
+
+   getPlugins: function(forUnitTests)
+   {
+      if (this._mFeedJSON && this._mFeedJSON.YNanoClientFeed && (forUnitTests ? this._mFeedJSON.YNanoClientFeed.unittest.plugins :
+                                                                                this._mFeedJSON.YNanoClientFeed.plugins))
+         return (forUnitTests ? this._mFeedJSON.YNanoClientFeed.unittest.plugins : this._mFeedJSON.YNanoClientFeed.plugins);
+   },
+
+   pluginsAreReady: function(activeURL)
+   {
+      try
+      {
+         if (!this._mPluginsAreReady && this._mFeedJSON && this._mFeedJSON.YNanoClientFeed)
+         {
+            var triggerURL= this._mFeedJSON.YNanoClientFeed.unittest.triggerURL;
+                        
+            var paramIdx= activeURL.indexOf('?');
+            if (paramIdx != -1)
+               activeURL= activeURL.substr(0, paramIdx);
+                           
+            if (activeURL.indexOf(triggerURL) == 0)
+               this._mInUnitTests= true;
+
+            this.checkForNewTabOverride();
+
+            var aryPluginResourceCollection= this._mAryPluginResourceCollection[this._mInUnitTests ? "unittest" : "normal"];
+            this._mPluginsAreReady= (aryPluginResourceCollection['pluginsNotReady'] == 0);
+         }
+      }   
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeScriptInjector.pluginsAreReady error: ' + e.message);
+      }
+
+      return this._mPluginsAreReady;
+   },
+
+   checkForNewTabOverride: function()
+   {
+      try
+      {
+         var plugins= this.getPlugins(this._mInUnitTests);
+
+         window.localStorage.setItem('ynano_pref_newTabUrl', "");
+
+         for (var index = 0, lindex = plugins.length; index < lindex; index++)
+         {
+            if (ChromePluginManager.isPluginInstalled(plugins[index].pluginID) && 
+               !this._mNewTabUrl && plugins[index].newTabOverride)
+            {
+               this._mNewTabUrl = plugins[index].newTabOverride;
+               window.localStorage.setItem('ynano_pref_newTabUrl', this._mNewTabUrl);
+               break;
+            }
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeScriptInjector.checkForNewTabOverride error: ' + e.message);
+      }  
+   },
+
+   addAllScript: function(plugins, forUnitTests)
+   {
+      try
+      {
+         this.addContent(null, {"contentUrl": this._mNanoBridgeCodeURL}, forUnitTests);
+         var aryPluginResourceCollection= this._mAryPluginResourceCollection[forUnitTests ? "unittest" : "normal"];	
+         aryPluginResourceCollection['pluginsNotReady'] = 0;
+         for (var index = 0, lindex = plugins.length; index < lindex; index++)
+         {
+            var bFoundInlineContent= false;
+            var pluginId = plugins[index].pluginID;            
+            aryPluginResourceCollection[pluginId] = {};
+            aryPluginResourceCollection[pluginId]['scripts'] = new Array();
+            aryPluginResourceCollection[pluginId]['styles'] = new Array();
+            aryPluginResourceCollection[pluginId]['html'] = new Array();
+            aryPluginResourceCollection[pluginId].resourcesRemain = 0;
+                
+            var injectContents = plugins[index].injectContent;
+            for (var cindex = 0, lcindex = injectContents.length; cindex < lcindex; cindex++)
+            {
+               var injectContent = injectContents[cindex];
+               if (this.addContent(pluginId, injectContent, forUnitTests) && !bFoundInlineContent)
+               {
+                  aryPluginResourceCollection['pluginsNotReady']++;
+                  bFoundInlineContent= true;
+               }
+            }
+            
+            aryPluginResourceCollection[pluginId]['startedLoading'] = true;
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeScriptInjector.addAllScript error: ' + e.message);
+      }
+   },
+
+   injectPlugins: function(tabId, tabUrl, bSecurePage)
+   {
+      try
+      {
+         if (!this.pluginsAreReady(tabUrl) || !this._mNanoBridgeCode)
+         {
+            this._mDeferInjectAry.push(
+            { 
+               tabIdInject: tabId, 
+               tabUrlInject: tabUrl, 
+               securePage: bSecurePage 
+            });
+         
+            return;
+         }
+
+         var _tabId;
+         var plugins= this.getPlugins(this._mInUnitTests);
+
+         this._mTabsToInsertScript[tabId]= true;
+
+         if (!plugins)
+            return;
+
+         var productionMode= true; //(!localStorage['qamode'] || (localStorage['qamode'] == 'prod') || (localStorage['qamode'] == 'production'));
+
+         for (var _tabIdStr in this._mTabsToInsertScript)
+         {
+            var _tabId= parseInt(_tabIdStr); 
+            if (this._mTabsToInsertScript[_tabId])
+            {
+               this._mTabsToInsertScript[_tabId]= false;
+               this.injectNanoBridge(_tabId);
+          
+               for (var index = 0, lindex = plugins.length; index < lindex; index++)
+               {
+                  var pluginId = plugins[index].pluginID;
+            
+                  if (!ChromePluginManager.isPluginInstalled(pluginId)) continue;
+
+                  var bInject= false;
+			
+                  switch (plugins[index].injectTarget.location)
+                  {
+                     case 'page':
+                     {
+                        bInject= (!bSecurePage || (plugins[index].injectTarget.injectOnSecurePages && productionMode));
+                        break;
+                     }
+                     case 'chrome':
+                     {
+                        bInject= true;
+                        break;
+                     }
+                  }
+
+                  if (bInject)
+                  {
+                     this.checkForFirstRun(tabId, plugins[index]);
+               
+                     ChromePerfMonitor.setPerfMetricsForPlugin(tabId, pluginId, 'loadStart', (new Date()).getTime());
+
+                     this.injectPluginScript(_tabId, pluginId, plugins[index].injectTarget, plugins[index].injectContent, !index, bSecurePage);
+                  }
+               }
+            }
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeScriptInjector.injectPlugins error: ' + e.message);
+      }
+   },
+
+   checkForFirstRun: function(tabId, objPlugin)
+   {
+      try
+      {
+         var pluginVer= (objPlugin.pluginVer ? objPlugin.pluginVer : '0');
+         if (!ChromePluginHistoryManager.getPluginFirstLoadTime(objPlugin.pluginID, pluginVer))
+         {
+            ChromePluginHistoryManager.setPluginFirstLoadTime(objPlugin.pluginID, pluginVer, (new Date()).getTime());
+
+            var firstRunURL= objPlugin.firstRunURL;
+            if (firstRunURL)
+               ChromeNavigationManager.navigateTab(tabId, {url: firstRunURL});
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeScriptInjector.getNanoPropScript error: ' + e.message);
+      }
+   },
+
+   getNanoPropScript: function(withEmbed)
+   {
+      var nanoPropScript= "";
+      
+      try
+      {
+         nanoPropScript= 
+         "try {" +
+         "  YAHOO.NanoBridge.setProperties({" +
+         "    nanoVer: '" + ChromeTrackingManager._mNanoVer + "'," +
+         "    nanoUUID: '" + ChromeTrackingManager._mNanoUUID + "'," +
+         "    nanoInstallTime: " + window.localStorage.getItem('ynano_installTime') + "," +
+         "    nanoBridgeJS: '" + this._mNanoBridgeCodeURL + "'," +
+         "    pageBridgeJS: '" + this._mPageBridgeURL + "'," +
+         "    recordUninstallURL: '" + this._mRecordUninstallURL + "'," +
+         "    detectUninstallURL: '" + this._mDetectUninstallURL + "'," +
+         "    debugMode: " + (ChromeDebugManager._mDebugMode ? "true" : "false") + 
+         "  }, " + (withEmbed ? "true" : "false") + ");" +
+         "} catch(e) { }";
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeScriptInjector.getNanoPropScript error: ' + e.message);
+      }
+
+      return nanoPropScript;      
+   },
+
+   injectNanoBridge: function(tabId)
+   {
+      try
+      {		 
+         var injectCode = "";
+
+         var aryPluginResourceCollection= this._mAryPluginResourceCollection[this._mInUnitTests ? "unittest" : "normal"];	
+         //if (!aryPluginResourceCollection[pluginId]['startedLoading'] || aryPluginResourceCollection[pluginId]['resourcesRemain'] > 0)
+         if (aryPluginResourceCollection['pluginsNotReady'] != 0 || !this._mNanoBridgeCode)
+         {
+            this._mTabsToInsertScript[tabId]= true;
+            return;
+         }
+
+         injectCode += this._mNanoBridgeCode;
+
+         injectCode+=  "YInjectNanoBridge = function() {" +
+         "  if (document && document.body && YAHOO) {" +
+         "    try {" +
+         "      YAHOO.NanoBridge.initPageInterface();" + this.getNanoPropScript(false) +
+         "    } catch (e) { }" +
+         "    return true;" +
+         "  }" +
+         "  return false;" +
+         "};" +
+         "if (!YInjectNanoBridge())" +
+         "  document.addEventListener('onreadystatechange', function() { YInjectNanoBridge(); }, false);";
+
+         var _self= this;
+         chrome.tabs.executeScript(tabId, {code: injectCode }, function()
+         {
+            ChromeCallHandler.attachPort(tabId);
+         });
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeScriptInjector.injectNanoBridge error: ' + e.message);
+      }
+   },
+
+   injectPluginScript: function(tabId, pluginId, injectTarget, injectContents, injectBridgeCode, bSecurePage)
+   {
+      try
+      {		 
+         var injectScriptTags= "", injectStyleTags= "", inlineScriptCode= "", inlineStyleCode= "", injectCode= "";
+         var injectHTMLToHeadTag= "<!doctype html><html><head>";
+         var injectHTMLAfterHeadTag= "</head><body></body></html>";
+
+         for (var index= 0, lindex= injectContents.length; index < lindex; index++)
+         {
+            var injectContent= injectContents[index];
+            if (!injectContent.injectWithBridge)
+            {
+               if (injectContent.contentType == "JS")
+               {
+                  if (injectContent.injectRemote)
+                  {
+                     var contentUrl= (bSecurePage ? injectContent.contentUrlSSL : injectContent.contentUrl);
+                     
+                     injectScriptTags += '<scr' + 'ipt type="text/javascript" src="' + contentUrl + '"></scr\'+' + '\'ipt>';
+                  }
+                  else
+                     inlineScriptCode += injectContent.injectCode;
+               }
+               else if (injectContent.contentType == "CSS")
+               {
+                  if (injectContent.injectRemote)
+                  {
+                     var contentUrl= (bSecurePage ? injectContent.contentUrlSSL : injectContent.contentUrl);
+                     
+                     injectStyleTags += '<sty' + 'le type="text/css" rel="stylesheet" src="' + contentUrl + '"></scr' + 'ipt>';
+                  }
+                  else
+                     inlineStyleCode += injectContent.injectCode;
+               }
+               else if (injectContent.contentType == "HTML")
+               {
+                  var htmlCode= injectContent.injectCode;
+                  htmlCode= htmlCode.replace(/\\/g, "\\\\");
+                  htmlCode= htmlCode.replace(/'/g, "\\'");
+                  htmlCode= htmlCode.replace(/\r/g, "");
+                  htmlCode= htmlCode.replace(/\n/g, "");
+                  htmlCode= htmlCode.replace(/<\/script>/g, "</scr' + 'ipt>");
+
+                  var nPosHeadTag= htmlCode.indexOf("<head>");
+                  if (nPosHeadTag != -1)
+                  {
+                     injectHTMLToHeadTag= htmlCode.substr(0, nPosHeadTag + 6);
+                     injectHTMLAfterHeadTag= htmlCode.substr(nPosHeadTag + 6);
+                  }               
+               }
+            }
+         }
+
+         switch (injectTarget.location)
+         {
+            case "page":
+            {
+               injectCode+=  "YInjectNanoPlugins_"+pluginId+"= function() {" +
+               "  if (document && document.getElementById('ynano_iframe_"+pluginId+"')) return true;" +
+               "  if (document && document.body && YAHOO) {" +
+               "    try {" +
+               "      YAHOO.NanoBridge.PluginInterface.init({pluginID:'" + pluginId + "',name:'page'});" + this.getNanoPropScript(true) +
+               "      var iframe= document.createElement('iframe');" +
+               "      iframe.id = 'ynano_iframe_"+pluginId+"';" +
+               "      iframe.style.cssText='position:absolute;width:1px;height:1px;top:0px;left:-9999px;';" +
+               "      iframe.scrolling='no';" +
+               "      iframe.frameBorder='0';";
+
+               if (this._mInjectAtTop)
+               {
+                  injectCode += "if (document.body.firstChild)" +
+                                "  document.body.insertBefore(iframe, document.body.firstChild);" +
+                                "else";
+               }
+               
+               injectCode +="  document.body.appendChild(iframe);" +
+               "      var iframeDoc= iframe.contentDocument;" +   
+               "      iframeDoc.open().write('" + injectHTMLToHeadTag;
+
+               inlineScriptCode += this._mNanoBridgeCode;
+
+               if (inlineScriptCode.length > 0)
+               {
+                  inlineScriptCode= inlineScriptCode.replace(/\\/g, "\\\\");
+                  inlineScriptCode= inlineScriptCode.replace(/'/g, "\\'");
+
+                  injectCode += '<scr' + 'ipt type="text/javascript">' + inlineScriptCode + '</scr' + 'ipt>';
+               }
+               if (inlineStyleCode.length > 0)
+               {
+                  inlineStyleCode= inlineStyleCode.replace(/\\/g, "\\\\");
+                  inlineStyleCode= inlineStyleCode.replace(/'/g, "\\'");
+
+                  injectCode += '<sty' + 'le type="text/css" rel="stylesheet">' + inlineStyleCode + '</sty' + 'le>';
+               }
+
+               injectCode += injectScriptTags + injectStyleTags;
+
+               injectCode += injectHTMLAfterHeadTag + "');" +
+               "        iframeDoc.close();" +
+               "        YAHOO.NanoBridge.PluginInterface.sinkWithIFrame(iframeDoc, '"+pluginId+"');" +
+               "     } catch (e) { YAHOO.NanoBridge.logError('YInjectNanoPlugins error:' + e.message); }" +
+               "     return true;" +
+               "  }" +
+               "  return false;" +
+               "};" +
+               "if (!YInjectNanoPlugins_"+pluginId+"())" +
+               "  document.addEventListener('onreadystatechange', function() { YInjectNanoPlugins_"+pluginId+"(); }, false);";
+
+               var _self= this;
+               //alert(injectCode);
+               chrome.tabs.executeScript(tabId, {code: injectCode });
+		         	
+               break;
+            }
+            case "chrome":
+            {
+               injectCode+= "YInjectNanoUIPlugin_" + pluginId + "=function(){" +
+               "  if (document) {" +
+               "    try {" +
+               "      document.tabId= request.tabId;" +
+               "      document.open();" +
+               "      document.write('" + injectHTMLToHeadTag;
+
+               inlineScriptCode += this._mNanoBridgeCode;
+
+               inlineScriptCode += "YAHOO.NanoBridge._mReverseInterface= true;";
+
+               inlineScriptCode += this.getNanoPropScript(false);
+
+               if (inlineScriptCode.length > 0)
+               {
+                  inlineScriptCode= inlineScriptCode.replace(/\\/g, "\\\\");
+                  inlineScriptCode= inlineScriptCode.replace(/'/g, "\\'");
+
+                  injectCode += '<scr' + 'ipt type="text/javascript">' + inlineScriptCode + '</scr' + 'ipt>';
+               }
+               if (inlineStyleCode.length > 0)
+               {
+                  inlineStyleCode= inlineStyleCode.replace(/\\/g, "\\\\");
+                  inlineStyleCode= inlineStyleCode.replace(/'/g, "\\'");
+
+                  injectCode += '<sty' + 'le type="text/css" rel="stylesheet">' + inlineStyleCode + '</sty' + 'le>';
+               }
+
+               injectCode += injectScriptTags + injectStyleTags;
+
+               injectCode+= injectHTMLAfterHeadTag + "');" +
+               "      document.close();" +
+               "    } catch (e) { YAHOO.NanoBridge.logError('injection error:' + e.message); }" +
+               "    return true;" +
+               "  }" +
+               "  window.setTimeout(YInjectNanoUIPlugin_" + pluginId + ", 100);" +
+               "  return false;" +
+               "};" +
+               "YInjectNanoUIPlugin_" + pluginId + "();";
+
+               this._mBandInjectScript[tabId]= injectCode;
+
+               var useInfobar= (!localStorage['bandmode'] || (localStorage['bandmode'] == 'infobar'));
+               if (useInfobar)
+               {
+                  var _self= this;
+                  chrome.experimental.infobars.show(
+                  {
+                     tabId: tabId,
+                     path: "chromeband.html?tabId=" + tabId,
+                     height: injectTarget.chromePixels
+                  });
+               }
+               else
+               {
+                  chrome.browserAction.setPopup(
+                  {
+                     tabId: tabId,
+                     popup: "chromeband.html?tabId=" + tabId
+                  });
+               }
+			
+               break;
+            }
+         }
+      }
+      catch (e)
+      {
+         ChromeDebugManager.logError('ChromeScriptInjector.injectPluginScript error: ' + e.message);
+      }
+   },
+
+   handleTabUpdate: function(status, tab)
+   {
+      var _self= this;
+      window.setTimeout(function()
+      {
+         try
+         {		
+            if (_self._mForceUpdateInt)
+            {
+               window.clearInterval(_self._mForceUpdateInt);
+               _self._mForceUpdateInt= null;
+            }
+         
+            var timeCur= (new Date()).getTime();
+
+            if (status == 'loading')
+            {
+               ChromeCallHandler.detachTab(tab.id);
+               ChromeCallHandler.attachTab(tab.id);
+              
+               ChromePerfMonitor.setPageLoadStart(tab.id, timeCur, true /*overwrite*/);
+
+               if ((tab.url.indexOf('http:') == 0) || (tab.url.indexOf('https:') == 0) || (tab.url == 'chrome://newtab/'))
+                  _self.injectPlugins(tab.id, tab.url, tab.url.indexOf('https:') == 0);
+
+               tab.completeInterval= window.setInterval(function()
+               {
+                  if (tab.status == "complete")
+                  {
+                     window.clearInterval(tab.completeInterval);
+                     tab.completeInterval= null;
+
+                     ChromePerfMonitor.setPageLoadEnd(tab.id, timeCur, true /*overwrite*/);
+                  }
+               }, 500);
+            }
+            else if (status == 'complete')
+            {
+               if (tab.completeInterval)
+               {
+                  window.clearInterval(tab.completeInterval);
+                  tab.completeInterval= null;
+
+                  ChromePerfMonitor.setPageLoadEnd(tab.id, timeCur, true /*overwrite*/);
+               }
+            }
+
+            if (!ChromePluginManager._mPrevActiveTabID[tab.windowId])
+               ChromePluginManager._mPrevActiveTabID[tab.windowId]= tab.id;
+         }
+         catch (e)
+         {
+            ChromeDebugManager.logError('ChromeScriptInjector.handleTabUpdate error: ' + e.message);
+         }
+      }, 100);         
+   }
+};
+
+chrome.extension.onConnect.addListener(function(port)
+{
+   if (port.name.indexOf("NanoChromeReverse") == 0)
+      ChromeCallHandler.attachReversePort(port);
+});
+
+chrome.extension.onRequest.addListener(function(request, sender, sendResponse)
+{
+   if (request.requestType == "getBandContentInject")
+   {
+      sendResponse(
+      { 
+         injectScript: ChromeScriptInjector._mBandInjectScript[request.tabId],
+         tabId: request.tabId
+      });
+   }
+   else
+      sendResponse({});
+});
+
+chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) 
+{
+   ChromeScriptInjector.handleTabUpdate(changeInfo.status, tab);
+});
+
+chrome.tabs.onRemoved.addListener(function(tabId, removeInfo)
+{
+   ChromeCallHandler.detachTab(tabId);
+});
+
+chrome.tabs.onCreated.addListener(function(tab)
+{
+   if (tab.url == 'chrome://newtab/')
+   {
+      var prefNewTabOvr= window.localStorage.getItem('ynano_pref_EnableNewTabOverride');
+      if (prefNewTabOvr)
+         prefNewTabOvr= prefNewTabOvr.toLowerCase();
+
+      var prefNewTabEverShown= window.localStorage.getItem('ynano_pref_NewTabEverShown');
+      if (prefNewTabEverShown)
+         prefNewTabEverShown= prefNewTabEverShown.toLowerCase();
+
+      if ((prefNewTabOvr && ((prefNewTabOvr == 'true') || (prefNewTabOvr == '1'))) ||
+          (!prefNewTabEverShown || ((prefNewTabEverShown != 'true') && (prefNewTabEverShown != '1'))))
+      {         
+         var _url = window.localStorage.getItem('ynano_pref_newTabUrl');
+         if (_url)
+         {
+            window.localStorage.setItem('ynano_pref_NewTabEverShown', 'true');
+
+            chrome.tabs.create({ url: _url });
+            chrome.tabs.remove(tab.id);
+         }
+      }
+   }
+});
+
+chrome.tabs.onSelectionChanged.addListener(function(tabId, selectInfo)
+{  
+   var plugins = ChromeScriptInjector.getPlugins(ChromeScriptInjector._mInUnitTests);
+   var prevActiveTabID = ChromePluginManager._mPrevActiveTabID[selectInfo.windowId];
+   if (prevActiveTabID)
+   {
+      for (var pluginOn= 0, length= plugins.length; pluginOn < length; pluginOn++)
+      {
+         if (ChromePluginManager.isPluginInstalled(plugins[pluginOn].pluginID))
+         {
+            callObj= {};
+            callObj.pluginID= plugins[pluginOn].pluginID;
+            callObj.eventFn= "onPageIdle";
+            ChromeCallHandler.fireEventToTab(prevActiveTabID, callObj);
+         }
+      }
+   }
+   for (var pluginOn= 0, length= plugins.length; pluginOn < length; pluginOn++)
+   {
+      if (ChromePluginManager.isPluginInstalled(plugins[pluginOn].pluginID))
+      {
+         callObj= {};
+         callObj.pluginID= plugins[pluginOn].pluginID;
+         callObj.eventFn= "onPageActive";
+         ChromeCallHandler.fireEventToTab(tabId, callObj);
+      }
+   }
+   ChromePluginManager._mPrevActiveTabID[selectInfo.windowId] = tabId;
+});
+
+chrome.cookies.onChanged.addListener(function(cookieChangeInfo)
+{
+   if (cookieChangeInfo.cause == 'explicit')
+   {
+      if ((cookieChangeInfo.cookie.name == 'Y') && (cookieChangeInfo.cookie.domain.indexOf('.yahoo.com') != -1))
+         ChromeCookieManager.getBlindYIDFromYCookie(cookieChangeInfo.cookie.value);
+         
+      var plugins= ChromeCookieManager.getPluginIDsForCookie(cookieChangeInfo.cookie.name, cookieChangeInfo.cookie.domain);
+      if(plugins)
+      {
+         for(var plugin in plugins)
+         {
+            callObj = {};
+            callObj.pluginID= plugin;
+            callObj.eventFn = "onCookieChange" ;
+            callObj.eventPv = {cookieName: cookieChangeInfo.cookie.name, cookieVal: cookieChangeInfo.cookie.value, cookieDomain: cookieChangeInfo.cookie.domain} ;
+            ChromeCallHandler.fireEventToAllTabs(callObj, null, false);
+         }
+      }
+   }
+});
+
+chrome.webNavigation.onBeforeNavigate.addListener(function(navInfo)
+{
+   ChromeResourcePreloader.cancelActivePreloads();
+});
+
+chrome.webNavigation.onDOMContentLoaded.addListener(function(navInfo)
+{
+   window.setTimeout(function()
+   {
+      chrome.tabs.get(navInfo.tabId, function(tab)
+      {
+         if (tab)
+         {
+            var timeCur= (new Date()).getTime();
+            var justAttached= false;
+
+            if (!ChromeCallHandler._mTabPorts[navInfo.tabId])
+            {
+               ChromeCallHandler.attachTab(navInfo.tabId);
+               ChromeScriptInjector.handleTabUpdate('loading', tab);
+               ChromeScriptInjector.handleTabUpdate('complete', tab);
+            }
+         }
+      });
+   }, 1000);
+});
+
+chrome.management.onDisabled.addListener(function(extInfo)
+{
+   if (extInfo.name == "Yahoo! Axis")
+      ChromeTrackingManager.sendBeaconForAllPlugins('uninstall');
+}); 
+
+chrome.management.onUninstalled.addListener(function(extInfo)
+{
+   if (extInfo.name == "Yahoo! Axis")
+   {
+      ChromeTrackingManager.sendBeaconForAllPlugins('uninstall');
+
+      for (var storageCur in window.localStorage)
+      {
+         if (storageCur.indexOf('ynano_') == 0)
+            window.localStorage.removeItem(storageCur);
+      }
+   }
+}); 
+
+</script>
+
+</head>
+
+<body onload="javascript:ChromeScriptInjector.fetchFeed(false /*forceDefaultFeedURL*/, false /*forceNoHTTPS*/);">
+</body>
+</html>

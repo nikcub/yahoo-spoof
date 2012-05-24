@@ -1,0 +1,29 @@
+{
+
+   "name": "Yahoo! Axis",
+  
+   "description": "Displays search results as you browse the web, whenever needed, without leaving the page you are on.  Automatically connects with your Axis iPhone and iPad apps to unify multiple browser experiences into one personal, cross-device experience.",
+  
+   "version": "1.0.76",
+  
+   "permissions": 
+   [
+      "cookies",
+      "history",
+      "tabs", 
+      "management",
+      "webNavigation",
+      "http://*/*", 
+      "https://*/*"
+   ],
+
+   "background_page": "background.html",
+
+   "update_url": "http://nano.toolbar.yahoo.com/ytoolbar/nanoclients/updates/Chrome/update.xml",
+
+   "icons": {
+    "16": "ynano.png",
+    "48": "ylogo_48.png",
+    "128": "ylogo_128.png"
+   }
+}
