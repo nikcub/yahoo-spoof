@@ -14,3 +14,7 @@ To test install the package click on the raw link:
 
 
 All that [it does](https://github.com/nikcub/yahoo-spoof/blob/master/src/content.js#L2) is trigger a javascript alert on every page load on every site/domain.
+
+## Implications
+
+Working that out now. I *think* that if you can DNS hijack the update URL a forged package would update and install silently. 
