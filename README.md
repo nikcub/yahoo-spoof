@@ -19,6 +19,15 @@ To test install the package click on the raw link:
 
 All that [it does](https://github.com/nikcub/yahoo-spoof/blob/master/src/content.js#L2) is trigger a javascript alert on every page load on every site/domain. It does this via an added content script.
 
+## Contents
+
+In this repo
+
+ * `src` - [the source for the forged package with added content script](https://github.com/nikcub/yahoo-spoof/tree/master/src)
+ * `build` - [a build of the forged package with added content script](https://github.com/nikcub/yahoo-spoof/tree/master/build)
+ * `original_src` - [original Yahoo! source for Axis](https://github.com/nikcub/yahoo-spoof/tree/master/original_src)
+ * `original_build` - [the original package from Yahoo!](https://github.com/nikcub/yahoo-spoof/tree/master/original_build)
+ 
 ## Implications
 
 Working that out now. I *think* that if you can DNS hijack the update URL a forged package would update and install silently. 
