@@ -1,4 +1,4 @@
-## Yahoo Axis Forged Packaged
+## Yahoo Axis Forged Package
 
 Yahoo! accidentally included their private certificate file inside the [Axis](http://axis.yahoo.com) Chrome extension
 
